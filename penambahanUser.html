@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Web Storage User Manager</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #f7f7f7;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .container {
+      width: 60%;
+      margin: auto;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    tr:hover {
+      background: #f2f2f2;
+    }
+
+    .btn-edit {
+      background: #007bff;
+      color: white;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .btn-delete {
+      background: #dc3545;
+      color: white;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .btn-edit:hover {
+      background: #0056b3;
+    }
+
+    .btn-delete:hover {
+      background: #b02a37;
+    }
+
+    input {
+      padding: 10px;
+      width: 80%;
+      border-radius: 8px;
+      border: 1px solid #aaa;
+    }
+
+    .form-element {
+      margin-bottom: 15px;
+    }
+
+    #submitButton {
+      background: #28a745;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #submitButton:hover {
+      background: #1f7a33;
+    }
+
+    /* untuk mengatur Urutkan: (di daftar user terdaftar*/
+    .sort-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 20px;  /* jarak dari search bar */
+      margin-bottom: 10px;
+    }
+
+    #sortSelect {
+      padding: 6px;
+      border-radius: 6px;
+    }
+
+    /* pastikan table punya layout yang stabil */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed; /* supaya kolom punya ukuran konsisten */
+    }
+
+/* atur lebar tiap kolom (jumlah th = 4) */
+th:nth-child(1), td:nth-child(1) { width: 40%; text-align: left; }
+th:nth-child(2), td:nth-child(2) { width: 12%; text-align: center; }
+th:nth-child(3), td:nth-child(3) { width: 28%; text-align: left; }
+th:nth-child(4), td:nth-child(4) { width: 20%; text-align: center; }
+
+/* styling cell agar isi tidak overflow */
+td, th {
+  padding: 12px;
+  word-wrap: break-word;
+  vertical-align: middle;
+}
+
+  </style>
+</head>
+
+<body>
+
+<h1>User Manager with Web Storage</h1>
+
+<div class="container">
+
+  <!-- Form -->
+  <div class="card">
+    <h2 id="form-title">Tambah User Baru</h2>
+
+    <form id="form-data-user">
+      <input type="hidden" id="user-id" />
+
+      <div class="form-element">
+        <label>Nama:</label><br>
+        <input id="nama" required maxlength="18" placeholder="Nama user">
+      </div>
+
+      <div class="form-element">
+        <label>Umur:</label><br>
+        <input id="umur" type="text" maxlength="2" placeholder="Umur user" required oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+      </div>
+
+      <div class="form-element">
+        <label>Domisili:</label><br>
+        <input id="domisili" required maxlength="20" placeholder="Domisili user">
+      </div>
+
+      <button id="submitButton" type="submit">Simpan Data</button>
+    </form>
+  </div>
+
+  <!-- Daftar User -->
+  <div class="card">
+    <h2>Daftar User Terdaftar</h2>
+    <div class="form-element">
+
+  <input 
+    type="text" 
+    id="searchInput" 
+    placeholder="Cari user berdasarkan nama..."
+    style="width: 60%; padding: 10px; border-radius: 6px; border: 1px solid #aaa;"
+  >
+  <!-- SORT CONTROLS -->
+<div class="sort-controls">
+  <label for="sortSelect">Urutkan:</label>
+  <select id="sortSelect">
+    <option value="name-asc">Nama A → Z</option>
+    <option value="name-desc">Nama Z → A</option>
+    <option value="age-asc">Umur ↑ (termuda → tua)</option>
+    <option value="age-desc">Umur ↓ (tua → termuda)</option>
+    <option value="none">Tidak diurutkan</option>
+  </select>
+</div>
+
+</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Nama</th>
+          <th>Umur</th>
+          <th>Domisili</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="user-list-table"></tbody>
+    </table>
+  </div>
+
+</div>
+<div id="pagination" style="margin-top: 20px; display: flex; gap: 6px;"></div>
+
+<script>
+  /* ============================
+   🔹 KONSTANTA & HELPER
+============================ */
+const STORAGE_KEY = "USER_STORAGE_KEY";
+let currentSortMode = "none";
+
+// Mencegah input HTML berbahaya
+function escapeHtml(text) {
+  if (text === undefined || text === null) return "";
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function checkStorage() {
+  return typeof Storage !== "undefined";
+}
+
+let currentPage = 1;
+const rowsPerPage = 5;   // bisa kamu ubah bebas
+
+/* ============================
+   🔹 LOCAL STORAGE FUNCTIONS
+============================ */
+function getUserList() {
+  return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+}
+
+function saveUserList(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+
+/* ============================
+   🔹 SORTING
+============================ */
+function sortUsers(users, mode) {
+  const copy = [...users];
+
+  switch (mode) {
+    case "name-asc":
+      copy.sort((a, b) => a.nama.localeCompare(b.nama));
+      break;
+    case "name-desc":
+      copy.sort((a, b) => b.nama.localeCompare(a.nama));
+      break;
+    case "age-asc":
+      copy.sort((a, b) => Number(a.umur) - Number(b.umur));
+      break;
+    case "age-desc":
+      copy.sort((a, b) => Number(b.umur) - Number(a.umur));
+      break;
+    case "none":
+    default:
+      break;
+  }
+  return copy;
+}
+
+
+/* ============================
+   🔹 RENDER TABLE
+============================ */
+function renderTable() {
+  let users = getUserList();
+
+  // SEARCH
+  const searchValue = document
+    .getElementById("searchInput")
+    .value.toLowerCase();
+
+  let filtered = users.filter(user =>
+    user.nama.toLowerCase().includes(searchValue)
+  );
+
+  // SORTING
+  filtered = sortUsers(filtered, currentSortMode);
+
+  // PAGINATION LOGIC
+  const start = (currentPage - 1) * rowsPerPage;
+  const end = start + rowsPerPage;
+  const paginatedData = filtered.slice(start, end);
+
+  // TAMPILKAN KE HTML
+  const table = document.getElementById("user-list-table");
+  table.innerHTML = "";
+
+  paginatedData.forEach(user => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${escapeHtml(user.nama)}</td>
+      <td>${escapeHtml(user.umur)}</td>
+      <td>${escapeHtml(user.domisili)}</td>
+      <td>
+        <button class="btn-edit" onclick="editUser(${user.id})">✏ Edit</button>
+        <button class="btn-delete" onclick="deleteUser(${user.id})">🗑 Delete</button>
+      </td>
+    `;
+    table.appendChild(row);
+  });
+
+   // RENDER PAGINATION BAR
+  renderPagination(filtered.length);
+}
+
+/* ============================
+   🔹 PAGINATION
+============================ */
+function renderPagination(totalRows) {
+  const totalPages = Math.ceil(totalRows / rowsPerPage);
+  const container = document.getElementById("pagination");
+
+  container.innerHTML = "";
+
+  if (totalPages === 0) return;
+
+  // Button Previous
+  const prevBtn = document.createElement("button");
+  prevBtn.textContent = "Previous";
+  prevBtn.disabled = currentPage === 1;
+  prevBtn.onclick = () => {
+    currentPage--;
+    renderTable();
+  };
+  container.appendChild(prevBtn);
+
+  // Numbered Pages
+  for (let i = 1; i <= totalPages; i++) {
+    const btn = document.createElement("button");
+    btn.textContent = i;
+    btn.style.padding = "5px 10px";
+    btn.style.borderRadius = "6px";
+    btn.style.border = "1px solid #aaa";
+
+    if (i === currentPage) {
+      btn.style.background = "#333";
+      btn.style.color = "white";
+    }
+
+    btn.onclick = () => {
+      currentPage = i;
+      renderTable();
+    };
+
+    container.appendChild(btn);
+  }
+
+  // Button Next
+  const nextBtn = document.createElement("button");
+  nextBtn.textContent = "Next";
+  nextBtn.disabled = currentPage === totalPages;
+  nextBtn.onclick = () => {
+    currentPage++;
+    renderTable();
+  };
+  container.appendChild(nextBtn);
+}
+
+
+/* ============================
+   🔹 DELETE USER
+============================ */
+function deleteUser(id) {
+  const users = getUserList().filter(u => u.id !== id);
+  saveUserList(users);
+  renderTable();
+}
+
+
+/* ============================
+   🔹 EDIT USER
+============================ */
+function editUser(id) {
+  const users = getUserList();
+  const user = users.find(u => u.id === id);
+
+  document.getElementById("user-id").value = user.id;
+  document.getElementById("nama").value = user.nama;
+  document.getElementById("umur").value = user.umur;
+  document.getElementById("domisili").value = user.domisili;
+
+  document.getElementById("form-title").innerText = "Edit User";
+  document.getElementById("submitButton").innerText = "Update User";
+}
+
+
+/* ============================
+   🔹 FORM SUBMIT (ADD / EDIT)
+============================ */
+document.getElementById("form-data-user").addEventListener("submit", function (e) {
+  e.preventDefault();
+
+  const idField = document.getElementById("user-id").value;
+  const nama = document.getElementById("nama").value.trim();
+  const umur = document.getElementById("umur").value.trim();
+  const domisili = document.getElementById("domisili").value.trim();
+
+  // VALIDASI UMUR
+  if (!/^[0-9]+$/.test(umur)) {
+    alert("Umur hanya boleh angka!");
+    return;
+  }
+  if (umur.length > 2) {
+    alert("Umur maksimal 2 digit!");
+    return;
+  }
+
+  let users = getUserList();
+
+  if (idField) {
+    // MODE EDIT
+    const index = users.findIndex(u => u.id == idField);
+    users[index] = { id: Number(idField), nama, umur, domisili };
+  } else {
+    // MODE ADD
+    users.unshift({
+      id: Date.now(),
+      nama,
+      umur,
+      domisili
+    });
+  }
+
+  saveUserList(users);
+  renderTable();
+
+  // RESET FORM
+  document.getElementById("form-data-user").reset();
+  document.getElementById("user-id").value = "";
+  document.getElementById("form-title").innerText = "Tambah User Baru";
+  document.getElementById("submitButton").innerText = "Simpan Data";
+});
+
+
+/* ============================
+   🔹 EVENT LISTENER
+============================ */
+document.getElementById("searchInput").addEventListener("keyup", function () {
+  currentPage = 1;
+  renderTable();
+});
+
+
+document.getElementById("sortSelect").addEventListener("change", function () {
+  currentSortMode = this.value;
+  currentPage = 1;
+  renderTable();
+});
+
+
+
+/* ============================
+   🔹 ON LOAD
+============================ */
+window.onload = () => {
+  if (!checkStorage()) {
+    alert("Browser tidak mendukung Local Storage");
+    return;
+  }
+  renderTable();
+};
+
+</script>
+
+</body>
+</html>
